@@ -3,7 +3,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
-.pytest_cache/
 .ipynb_checkpoints/
 
 # ---- Virtual environments ----
@@ -11,29 +10,27 @@ __pycache__/
 .venv-*/
 venv/
 env/
+ENV/
 
-# ---- Data (large datasets / model-ready tensors) ----
-data/raw/
-data/interim/
-data/processed/
-data/external/
-!data/**/README.md
+# ---- Test / tooling caches ----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Datasets (kept local; too large for git) ----
+data/*
 !data/README.md
 
-# ---- Model artifacts / checkpoints ----
-models/**
-!models/.gitkeep
+# ---- Model checkpoints / artifacts ----
+models/
 
-# ---- Reports build artifacts ----
-reports/figures/*
-!reports/figures/.gitkeep
+# ---- Backups / scratch ----
+*.bak
 
-# ---- OS / editor ----
+# ---- Editor / OS / local agent settings ----
+.claude/
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
-*.swp
-
-# ---- Secrets / local config ----
-*.env
-.env
-*.key
+~$*

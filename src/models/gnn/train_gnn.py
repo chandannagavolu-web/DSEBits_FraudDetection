@@ -107,6 +107,11 @@ def run(cfg: dict) -> None:
             {
                 "experiment": cfg["experiment_name"],
                 "model": gnn_cfg["model_type"],
+                # The graph is built from the full feature pipeline (incl. the
+                # engineered balance features), so these rows are comparable to
+                # the "full" baselines. A no-leakage graph would set this to
+                # "no_leakage" via gnn.feature_set in the config.
+                "feature_set": gnn_cfg.get("feature_set", "full"),
                 "resampling": "none",
                 "split": split_name,
                 "n_features": in_channels_dict["transaction"],

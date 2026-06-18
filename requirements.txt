@@ -10,3 +10,4 @@ imbalanced-learn
 torch
 torch_geometric
 jupyter
+pytest

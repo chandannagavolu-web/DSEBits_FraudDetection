@@ -1,0 +1,127 @@
+# Experiment configuration for the PaySim (synthetic mobile-money) Fraud track.
+#
+# PaySim is a single ~6.3M-row CSV simulating mobile-money transfers between
+# customers/merchants. Fraud is rare (~0.13%) and, by construction, only ever
+# occurs in TRANSFER and CASH_OUT transactions. The natural structure is a
+# sender->receiver account graph, so the GNN track unifies nameOrig/nameDest
+# into a single `account` node type (see src/graph/paysim_graph.py).
+
+experiment_name: paysim_fraud
+seed: 42
+
+paths:
+  raw_dir: data/raw/paysim
+  # The Kaggle download ships as one big CSV with this exact name. Override
+  # here if you renamed it (e.g. to paysim.csv).
+  transaction_file: PS_20174392719_1491204439457_log.csv
+  interim_dir: data/interim/paysim
+  processed_dir: data/processed/paysim
+  results_csv: reports/results_paysim.csv
+  model_dir: models/paysim
+
+split:
+  train_frac: 0.70
+  val_frac: 0.15
+  test_frac: 0.15
+  stratify_col: isFraud
+
+# Optional stratified down-sampling applied at load time, BEFORE splitting, so
+# baselines and the GNN train/evaluate on identical rows (fair comparison).
+# The full graph (~6.3M transaction nodes + millions of account nodes) does not
+# fit in 8GB RAM; fraction=0.15 (~950K transactions) keeps the whole pipeline
+# runnable on this machine while preserving the fraud rate via stratification.
+# Set fraction: 1.0 to use the full dataset on a larger machine.
+subsample:
+  enabled: true
+  fraction: 0.15
+
+resampling:
+  enabled: false
+  method: smote
+  # PaySim fraud is ~0.13%, so even a modest minority ratio is a large
+  # oversample. We default to class-weighting / scale_pos_weight instead
+  # (see baseline + gnn sections); SMOTE is available via
+  # src.features.resampling_paysim for ablation.
+  sampling_strategy: 0.1
+  k_neighbors: 5
+
+features:
+  label_col: isFraud
+  id_col: TransactionID
+  categorical_cols:
+    - type
+  # Account identifiers are too high-cardinality to one-hot/label-encode as
+  # model features, but their transaction degree is informative, so they are
+  # frequency-encoded (how often each account appears as orig / dest).
+  freq_encode_cols:
+    - nameOrig
+    - nameDest
+  log1p_cols:
+    - amount
+    - oldbalanceOrg
+    - newbalanceOrig
+    - oldbalanceDest
+    - newbalanceDest
+  # Columns dropped before feature engineering: the raw account id strings
+  # (kept only for graph construction / freq-encoding) and isFlaggedFraud
+  # (a downstream business rule that leaks the label).
+  drop_cols:
+    - nameOrig
+    - nameDest
+    - isFlaggedFraud
+  # Engineered balance-consistency features. These are NOT temporal leakage
+  # (the balances are known at transaction time), but they near-deterministically
+  # encode PaySim's synthetic fraud-generation rule (fraud drains the origin
+  # account), making the data trivially separable. They are kept in the default
+  # "full" feature set but excluded in the no-leakage ablation
+  # (train_baseline_paysim.py --no-leakage) so baselines reflect a realistic,
+  # non-degenerate difficulty. The raw before/after balances are intentionally
+  # KEPT — they are legitimate, production-available signals; excluding them
+  # would remove real predictive power rather than the synthetic artifact.
+  leakage_cols:
+    - errorBalanceOrig
+    - errorBalanceDest
+    - balanceDeltaOrig
+    - balanceDeltaDest
+  missing_value: -999
+
+graph:
+  # Both nameOrig and nameDest are accounts; they are merged into ONE shared
+  # `account` vocabulary so an account acting as sender in one transaction and
+  # receiver in another is the same node (essential for fraud-ring / layering
+  # connectivity). See src/graph/paysim_graph.py.
+  orig_col: nameOrig
+  dest_col: nameDest
+  add_reverse_edges: true
+
+baseline:
+  models:
+    - logistic_regression
+    - random_forest
+    - xgboost
+  logistic_regression:
+    max_iter: 1000
+    class_weight: balanced
+  random_forest:
+    n_estimators: 300
+    max_depth: 12
+    class_weight: balanced
+    n_jobs: -1
+  xgboost:
+    n_estimators: 500
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    eval_metric: aucpr
+
+gnn:
+  model_type: hetero_sage   # hetero_sage | hetero_gat
+  hidden_dim: 32
+  num_layers: 2
+  dropout: 0.3
+  lr: 0.001
+  weight_decay: 0.0005
+  epochs: 100
+  patience: 10
+  pos_weight_clip: 50.0
