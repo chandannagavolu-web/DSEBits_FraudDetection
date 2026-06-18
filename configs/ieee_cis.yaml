@@ -1,0 +1,119 @@
+# Experiment configuration for the IEEE-CIS Fraud Detection track.
+
+experiment_name: ieee_cis_fraud
+seed: 42
+
+paths:
+  raw_dir: data/raw/ieee_cis
+  transaction_file: train_transaction.csv
+  identity_file: train_identity.csv
+  interim_dir: data/interim/ieee_cis
+  processed_dir: data/processed/ieee_cis
+  results_csv: reports/results_ieee_cis.csv
+  model_dir: models/ieee_cis
+
+split:
+  train_frac: 0.70
+  val_frac: 0.15
+  test_frac: 0.15
+  stratify_col: isFraud
+
+resampling:
+  enabled: false
+  method: smote
+  # ratio of minority:majority after resampling (~3.5% -> ~23% fraud rate).
+  # "auto" (full 1:1 balance, ~28x oversampling) is avoided: it both risks
+  # overfitting on near-duplicated synthetic fraud cases and needs several
+  # GB of peak memory at this row/feature count.
+  sampling_strategy: 0.3
+  k_neighbors: 5
+
+features:
+  label_col: isFraud
+  id_col: TransactionID
+  categorical_cols:
+    - ProductCD
+    - card1
+    - card2
+    - card3
+    - card4
+    - card5
+    - card6
+    - addr1
+    - addr2
+    - P_emaildomain
+    - R_emaildomain
+    - M1
+    - M2
+    - M3
+    - M4
+    - M5
+    - M6
+    - M7
+    - M8
+    - M9
+    - DeviceType
+    - DeviceInfo
+    - id_12
+    - id_15
+    - id_16
+    - id_23
+    - id_27
+    - id_28
+    - id_29
+    - id_30
+    - id_31
+    - id_33
+    - id_34
+    - id_35
+    - id_36
+    - id_37
+    - id_38
+  freq_encode_cols:
+    - card1
+    - addr1
+    - P_emaildomain
+    - DeviceInfo
+  log1p_cols:
+    - TransactionAmt
+  missing_value: -999
+
+graph:
+  entity_cols:
+    - card1
+    - addr1
+    - P_emaildomain
+    - DeviceInfo
+  add_reverse_edges: true
+
+baseline:
+  models:
+    - logistic_regression
+    - random_forest
+    - xgboost
+  logistic_regression:
+    max_iter: 1000
+    class_weight: balanced
+  random_forest:
+    n_estimators: 300
+    max_depth: 12
+    class_weight: balanced
+    n_jobs: -1
+  xgboost:
+    n_estimators: 500
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    eval_metric: aucpr
+
+gnn:
+  model_type: hetero_sage   # hetero_sage | hetero_gat
+  hidden_dim: 32
+  num_layers: 2
+  dropout: 0.3
+  lr: 0.001
+  weight_decay: 0.0005
+  epochs: 100
+  patience: 10
+  pos_weight_clip: 50.0

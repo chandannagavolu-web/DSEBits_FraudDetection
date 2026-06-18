@@ -1,0 +1,39 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ---- Virtual environments ----
+.venv/
+.venv-*/
+venv/
+env/
+
+# ---- Data (large datasets / model-ready tensors) ----
+data/raw/
+data/interim/
+data/processed/
+data/external/
+!data/**/README.md
+!data/README.md
+
+# ---- Model artifacts / checkpoints ----
+models/**
+!models/.gitkeep
+
+# ---- Reports build artifacts ----
+reports/figures/*
+!reports/figures/.gitkeep
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+*.swp
+
+# ---- Secrets / local config ----
+*.env
+.env
+*.key
