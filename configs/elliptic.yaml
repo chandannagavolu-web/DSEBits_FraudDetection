@@ -1,0 +1,94 @@
+# Experiment configuration for the Elliptic Bitcoin Dataset
+# (fraud / systemic-risk track, GNN node classification).
+#
+# Unlike the IEEE-CIS and PaySim fraud tracks, Elliptic is a *homogeneous*,
+# *temporal*, *pre-featurized* graph: one `transaction` node type, 166 ready-made
+# features per node, 234K directed Bitcoin payment edges, and 49 time steps.
+# There is no feature engineering or entity-graph construction here — the graph
+# is given. See `data/README.md` for the file layout.
+#
+# Positive class convention: illicit = 1, licit = 0. Unknown nodes (~77% of the
+# graph) carry label -1: they participate in message passing but are masked out
+# of the loss and all metrics.
+
+experiment_name: elliptic_bitcoin
+seed: 42
+
+paths:
+  raw_dir: data/raw/elliptic
+  features_file: elliptic_txs_features.csv   # NO header: txId, time_step, 165 feats
+  classes_file: elliptic_txs_classes.csv     # header: txId, class (1=illicit, 2=licit, unknown)
+  edgelist_file: elliptic_txs_edgelist.csv   # header: txId1, txId2
+  interim_dir: data/interim/elliptic
+  processed_dir: data/processed/elliptic
+  results_csv: reports/results_elliptic.csv
+  model_dir: models/elliptic
+
+# Temporal (out-of-time) split over the 49 time steps — the canonical Elliptic
+# benchmark protocol (Weber et al. 2019). Training never sees a future time step,
+# which is what makes the evaluation a realistic systemic-risk forecast.
+#   train: steps 1 .. (val_min_step - 1)
+#   val:   steps val_min_step .. train_max_step
+#   test:  steps test_min_step .. 49
+split:
+  val_min_step: 31
+  train_max_step: 34
+  test_min_step: 35
+
+features:
+  id_col: txId
+  time_col: time_step
+  label_col: label
+  # 'all' = 166 features (AF); 'local' = 94 local features (LF). The Weber et al.
+  # ablation: aggregated features (neighbour roll-ups) help most models a little.
+  feature_set: all
+  # The first 94 features (time_step + 93 local) are "local"; the remaining 72
+  # are aggregated neighbourhood roll-ups.
+  n_local_features: 94
+  # The raw time-step index is local feature #1. Keeping it lets a model read an
+  # absolute clock; because the split is temporal the test steps are unseen, so
+  # it can only extrapolate. Toggle to true to drop it from the feature matrix.
+  drop_time_step_feature: false
+  # Standardize features using TRAIN-node statistics only (no leakage), fit once
+  # and applied to val/test/unknown nodes.
+  standardize: true
+
+baseline:
+  models:
+    - logistic_regression
+    - random_forest
+    - xgboost
+  logistic_regression:
+    max_iter: 1000
+    class_weight: balanced
+  random_forest:
+    # On Elliptic, Random Forest is a famously strong baseline that rivals/beats
+    # GCN on illicit-class F1 — the headline GNN-vs-traditional comparison.
+    n_estimators: 100
+    max_depth: 20
+    class_weight: balanced
+    n_jobs: -1
+  xgboost:
+    n_estimators: 300
+    max_depth: 6
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8
+    eval_metric: aucpr
+
+gnn:
+  model_type: graphsage     # gcn | graphsage | gat
+  hidden_dim: 128
+  num_layers: 2
+  dropout: 0.3
+  lr: 0.01
+  weight_decay: 0.0005
+  epochs: 200
+  patience: 20
+  # Clip the BCE positive-class weight so the rare illicit class doesn't blow up
+  # the loss scale (illicit is ~10% of labeled nodes, ~2% of all nodes).
+  pos_weight_clip: 50.0
+  # Bitcoin flows are directed; add reverse edges so message passing is
+  # bidirectional (a node hears from both its payers and its payees).
+  add_reverse_edges: true
+  feature_set: all

@@ -1,0 +1,79 @@
+# Experiment configuration for the Credit Card Fraud Detection dataset
+# (ULB / Kaggle) — the autoencoder anomaly-detection track (CLAUDE.md Objective 3).
+#
+# ~284,807 transactions, 0.172% fraud, 30 numeric columns: `Time`, the 28
+# PCA-anonymised features `V1`..`V28`, and `Amount`. This is the classic
+# reconstruction-error benchmark: an autoencoder is trained on NORMAL (non-fraud)
+# transactions only, and a transaction's reconstruction error becomes its
+# anomaly score — fraud, being unlike anything the AE learned to reconstruct,
+# produces a high error. This is an *unsupervised early-warning* detector,
+# contrasted against supervised baselines (Objective 4).
+#
+# Positive class convention: fraud = 1. Heavy imbalance makes PR-AUC and MCC the
+# headline metrics (ROC-AUC is over-optimistic here).
+
+experiment_name: creditcard_fraud
+seed: 42
+
+paths:
+  raw_dir: data/raw/creditcard
+  data_file: creditcard.csv
+  interim_dir: data/interim/creditcard
+  processed_dir: data/processed/creditcard
+  results_csv: reports/results_creditcard.csv
+  model_dir: models/creditcard
+
+split:
+  train_frac: 0.70
+  val_frac: 0.15
+  test_frac: 0.15
+  stratify_col: Class
+
+features:
+  label_col: Class
+  id_col: TxnID
+  # `Time` is seconds-since-first-transaction; weak signal and on a wildly
+  # different scale. Dropped by default; flip to false to keep it.
+  drop_time: true
+  # All retained features are standardized (fit on TRAIN-normal statistics) so
+  # the AE's per-feature reconstruction error is comparably scaled.
+  standardize: true
+
+# Autoencoder: a symmetric MLP. encoder_dims are the hidden widths down to the
+# bottleneck; the decoder mirrors them. Trained on normal transactions only.
+autoencoder:
+  encoder_dims: [20, 14, 7]   # last entry is the bottleneck
+  dropout: 0.0
+  activation: relu            # relu | tanh
+  lr: 0.001
+  weight_decay: 0.00001
+  epochs: 50
+  patience: 8
+  batch_size: 2048
+  # Threshold for converting reconstruction error -> fraud flag, chosen on the
+  # validation split. 'best_f1' sweeps thresholds for max F1; 'percentile' uses
+  # a high percentile of the normal-error distribution.
+  threshold_method: best_f1
+  threshold_percentile: 99.0
+
+# Supervised baselines for the AE-vs-traditional comparison (Objective 4).
+baseline:
+  models:
+    - logistic_regression
+    - random_forest
+    - xgboost
+  logistic_regression:
+    max_iter: 1000
+    class_weight: balanced
+  random_forest:
+    n_estimators: 200
+    max_depth: 12
+    class_weight: balanced
+    n_jobs: -1
+  xgboost:
+    n_estimators: 300
+    max_depth: 6
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8
+    eval_metric: aucpr

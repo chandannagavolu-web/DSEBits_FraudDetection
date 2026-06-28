@@ -1,0 +1,93 @@
+# Experiment configuration for the German Credit Data (credit-risk tabular track).
+#
+# Classic credit-scoring dataset: ~1000 applicants labelled good / bad credit
+# risk. It is the small, well-understood baseline for the credit-risk track —
+# the place to establish the scorecard metrics (KS, Gini, WoE/IV) before scaling
+# to larger relational datasets (Home Credit, Lending Club). Unlike the fraud
+# tracks there is NO graph and NO GNN here: the data is purely tabular.
+#
+# Positive class convention: bad credit (default) = 1. KS / Gini measure how
+# well the model separates "bad" applicants from "good" ones.
+#
+# NOTE: the Kaggle `varunchawla30/german-credit-data` file circulates in two
+# schemas. This config targets the common *cleaned* 10-column version
+# (Age, Sex, Job, Housing, Saving accounts, Checking account, Credit amount,
+# Duration, Purpose, Risk). If you downloaded the 21-column UCI Statlog version,
+# update `features.*` below to its column names — `src/data/german_credit.py`
+# already normalises either target encoding (good/bad or 1/2) to 0/1.
+
+experiment_name: german_credit
+seed: 42
+
+paths:
+  raw_dir: data/raw/german_credit
+  # The cleaned Kaggle download is usually named `german_credit_data.csv`.
+  # Override here if yours differs.
+  data_file: german_credit_data.csv
+  interim_dir: data/interim/german_credit
+  processed_dir: data/processed/german_credit
+  results_csv: reports/results_german_credit.csv
+  model_dir: models/german_credit
+  iv_csv: reports/german_credit_iv.csv
+
+split:
+  train_frac: 0.70
+  val_frac: 0.15
+  test_frac: 0.15
+  stratify_col: Risk
+
+# 5-fold stratified cross-validation. With only 1000 rows a single 150-row test
+# split gives a noisy KS/Gini, so the trainer additionally reports CV mean/std
+# (pipeline refit inside each fold to avoid leakage) for a stable headline.
+cross_validation:
+  enabled: true
+  n_splits: 5
+
+features:
+  label_col: Risk
+  id_col: ApplicantID
+  # `Job` is an ordinal skill code (0-3); treated as categorical so the models
+  # don't read a false linear order into it.
+  categorical_cols:
+    - Sex
+    - Job
+    - Housing
+    - Saving accounts
+    - Checking account
+    - Purpose
+  log1p_cols:
+    - Credit amount
+  # WoE / Information Value is computed over these columns and written to
+  # paths.iv_csv for the dissertation's feature-analysis section.
+  iv_cols:
+    - Age
+    - Sex
+    - Job
+    - Housing
+    - Saving accounts
+    - Checking account
+    - Credit amount
+    - Duration
+    - Purpose
+  missing_value: -999
+
+baseline:
+  models:
+    - logistic_regression
+    - random_forest
+    - xgboost
+  logistic_regression:
+    max_iter: 1000
+    class_weight: balanced
+  random_forest:
+    n_estimators: 300
+    max_depth: 8
+    class_weight: balanced
+    n_jobs: -1
+  xgboost:
+    n_estimators: 300
+    max_depth: 4
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    eval_metric: aucpr

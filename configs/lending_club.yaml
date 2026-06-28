@@ -1,0 +1,193 @@
+# Experiment configuration for the Lending Club Loan Data
+# (credit-risk track: tabular default prediction + temporal TCN).
+#
+# This is the credit-risk track's large, real-world dataset (~2.26M accepted
+# loans, ~151 columns in accepted_2007_to_2018Q4.csv). Two things make it
+# distinct from the German Credit baseline:
+#
+#   1. LEAKAGE. Lending Club is the canonical leakage trap — dozens of columns
+#      (recoveries, total_pymnt*, last_pymnt_*, out_prncp*, last_fico_*, the
+#      hardship/settlement blocks) record what happened AFTER origination and
+#      would trivially reveal the label. We therefore use an explicit ALLOWLIST
+#      of origination-time features (`load.usecols` + the feature lists below)
+#      rather than a drop-list, so a new leaky column can never sneak in.
+#
+#   2. TIME. The split is OUT-OF-TIME on `issue_d` (train on earlier vintages,
+#      test on later ones) — the realistic way credit teams validate a scorecard
+#      — not the random stratified split used by German Credit.
+#
+# Positive class convention: bad credit (default / charge-off) = 1. KS / Gini
+# measure how well the model separates defaulters from fully-paid loans.
+
+experiment_name: lending_club
+seed: 42
+
+paths:
+  raw_dir: data/raw/lending_club
+  data_file: accepted_2007_to_2018Q4.csv
+  interim_dir: data/interim/lending_club
+  processed_dir: data/processed/lending_club
+  results_csv: reports/results_lending_club.csv
+  model_dir: models/lending_club
+  iv_csv: reports/lending_club_iv.csv
+
+# Raw columns read from the CSV (allowlist). Only origination-time fields plus
+# the columns needed to DERIVE features (fico_range_*, earliest_cr_line) and to
+# split/label (issue_d, loan_status). Everything else is left on disk.
+load:
+  usecols:
+    - loan_status        # target source
+    - issue_d            # temporal split key
+    - loan_amnt
+    - term
+    - int_rate
+    - installment
+    - grade
+    - sub_grade
+    - emp_length
+    - home_ownership
+    - annual_inc
+    - verification_status
+    - purpose
+    - addr_state
+    - dti
+    - delinq_2yrs
+    - earliest_cr_line   # -> credit_age_mths
+    - fico_range_low     # -> fico (mean)
+    - fico_range_high    # -> fico (mean)
+    - inq_last_6mths
+    - open_acc
+    - pub_rec
+    - revol_bal
+    - revol_util
+    - total_acc
+    - initial_list_status
+    - application_type
+  # Read in chunks so the 2.2M-row file doesn't blow up memory on an 8GB box.
+  chunksize: 200000
+
+# Binary target derived from loan_status. In-progress / censored statuses are
+# dropped (we can't yet know their outcome) so the label is unambiguous.
+target:
+  bad_statuses:
+    - "Charged Off"
+    - "Default"
+    - "Does not meet the credit policy. Status:Charged Off"
+  good_statuses:
+    - "Fully Paid"
+    - "Does not meet the credit policy. Status:Fully Paid"
+  # Anything not in the two lists above (Current, Issued, In Grace Period,
+  # Late ...) is dropped as censored.
+
+# Out-of-time split: sort by issue_d, take the earliest train_frac as train,
+# the next val_frac as val, the latest test_frac as test.
+split:
+  method: temporal_quantile
+  train_frac: 0.70
+  val_frac: 0.15
+  test_frac: 0.15
+  date_col: issue_date     # parsed datetime added by the loader
+  stratify_col: target
+
+features:
+  label_col: target
+  id_col: LoanID
+  # Cleaned/parsed numeric columns (the loader parses term/emp_length/percent
+  # strings and engineers fico + credit_age_mths).
+  numeric_cols:
+    - loan_amnt
+    - term_months
+    - int_rate
+    - installment
+    - emp_length_years
+    - annual_inc
+    - dti
+    - delinq_2yrs
+    - fico
+    - credit_age_mths
+    - inq_last_6mths
+    - open_acc
+    - pub_rec
+    - revol_bal
+    - revol_util
+    - total_acc
+  categorical_cols:
+    - grade
+    - sub_grade
+    - home_ownership
+    - verification_status
+    - purpose
+    - initial_list_status
+    - application_type
+  # High-cardinality columns: frequency-encoded instead of one label code per
+  # value (mirrors the PaySim / IEEE-CIS treatment of ids).
+  freq_encode_cols:
+    - addr_state
+  log1p_cols:
+    - annual_inc
+    - revol_bal
+    - installment
+  # WoE / Information Value feature screening (train split only).
+  iv_cols:
+    - term_months
+    - int_rate
+    - grade
+    - sub_grade
+    - fico
+    - dti
+    - annual_inc
+    - emp_length_years
+    - home_ownership
+    - purpose
+    - revol_util
+    - inq_last_6mths
+  missing_value: -999
+
+baseline:
+  models:
+    - logistic_regression
+    - random_forest
+    - xgboost
+  logistic_regression:
+    max_iter: 1000
+    class_weight: balanced
+  random_forest:
+    n_estimators: 200
+    max_depth: 12
+    class_weight: balanced
+    n_jobs: -1
+  xgboost:
+    n_estimators: 400
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    eval_metric: aucpr
+
+# Temporal TCN (Phase 2) — multi-period default prediction.
+#
+# IMPORTANT: the standard accepted-loans CSV is a one-row-per-loan SNAPSHOT, not
+# a monthly panel, so genuine per-period repayment sequences require Lending
+# Club's separate payment-history file (PMTHIST_ALL_*.csv). Until that is
+# available, `sequences.mode: synthetic_amortization` builds each loan's monthly
+# amortization schedule (scheduled balance / principal / interest trajectory)
+# as the temporal axis and broadcasts the static origination features across it.
+# This exercises the TCN end-to-end and plugs into the same metric harness, but
+# is a PROOF-OF-CONCEPT temporal signal — set `mode: payment_history` once the
+# real panel is downloaded.
+sequences:
+  mode: synthetic_amortization   # synthetic_amortization | payment_history
+  max_len: 36                    # cap sequence length (months) for the TCN
+  static_in_sequence: true       # broadcast static features at every timestep
+
+tcn:
+  hidden_dim: 64
+  num_layers: 4          # dilations 1,2,4,8 -> receptive field covers max_len
+  kernel_size: 3
+  dropout: 0.2
+  lr: 0.001
+  weight_decay: 0.0005
+  epochs: 30
+  patience: 5
+  batch_size: 512
+  pos_weight_clip: 20.0

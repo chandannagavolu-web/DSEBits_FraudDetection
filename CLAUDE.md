@@ -49,7 +49,7 @@ these deep learning approaches against traditional ML models.
 | **German Credit Data (Kaggle)** | Credit risk (tabular baseline) | Classic credit scoring dataset (1000 applicants, good/bad credit risk labels) — useful as a small, well-understood baseline for credit risk scorecard metrics (KS, Gini) before scaling to larger relational datasets. | https://www.kaggle.com/datasets/varunchawla30/german-credit-data |
 | **Home Credit Default Risk (Kaggle)** | Credit risk (temporal + relational) | Multi-table relational data (application, bureau, previous applications, installment payments) — supports both temporal sequence modeling and entity-relationship graph construction for default prediction. | TBD |
 | **Lending Club Loan Data** | Credit risk (temporal) | Loan-level data with repayment history over time — suited for TCN-based multi-period default prediction. | TBD |
-| **Credit Card Fraud Detection (ULB/Kaggle)** | Fraud (tabular baseline) | ~284K anonymized transactions, highly imbalanced — useful as a tabular baseline / autoencoder anomaly-detection benchmark before graph extensions. | TBD |
+| **Credit Card Fraud Detection (ULB/Kaggle)** | Fraud (tabular baseline) | ~284K anonymized transactions, highly imbalanced — useful as a tabular baseline / autoencoder anomaly-detection benchmark before graph extensions. | https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud |
 
 Final dataset selection should be confirmed during the Literature Review /
 Dissertation Outline phase and recorded in `data/README.md` along with

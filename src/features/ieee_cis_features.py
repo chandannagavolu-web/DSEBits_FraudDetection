@@ -59,8 +59,16 @@ class IEEECISFeaturePipeline:
     # fitting
     # ------------------------------------------------------------------
     def fit(self, df: pd.DataFrame) -> "IEEECISFeaturePipeline":
-        exclude = set(self.categorical_cols) | {self.label_col, self.id_col}
-        self.numeric_cols_ = [c for c in df.columns if c not in exclude]
+        exclude = set(self.categorical_cols) | set(self.freq_encode_cols) | {self.label_col, self.id_col}
+        # Numeric view = remaining columns that are actually numeric. Selecting
+        # by dtype (rather than "everything not categorical") means an undeclared
+        # string/object column is skipped instead of being handed to the scaler,
+        # which would raise. In the real IEEE-CIS config every categorical is
+        # declared, so this picks the identical set and the saved artifacts are
+        # unchanged.
+        self.numeric_cols_ = [
+            c for c in df.columns if c not in exclude and pd.api.types.is_numeric_dtype(df[c])
+        ]
 
         for col in self.categorical_cols:
             self.label_encoders_[col] = self._fit_categorical(df[col])
